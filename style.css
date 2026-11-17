@@ -19,7 +19,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 button:disabled { cursor: default; opacity: .4; }
 button:focus-visible { outline: 2px solid var(--wood); outline-offset: 2px; }
 
-#app { display: flex; height: 100vh; height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+/* Fixed to the screen: on the iPhone home screen 100dvh is taller than the space the page gets. */
+#app { position: fixed; inset: 0; display: flex; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 .board-area { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 24px; }
 #board { width: 100%; height: 100%; max-height: calc(100dvh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); display: block; touch-action: none; -webkit-touch-callout: none; }
 #board.active { cursor: pointer; }
@@ -65,16 +66,17 @@ button:focus-visible { outline: 2px solid var(--wood); outline-offset: 2px; }
 /* A phone upright: the board across the whole width, the panel under it. */
 @media (max-width: 720px) {
   #app { flex-direction: column; }
-  .board-area { flex: none; padding: 6px; }
-  /* The panel keeps room for the rank, the players and the buttons. */
-  #board { height: auto; max-height: calc(100dvh - 260px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
-  .side { flex: 1; width: auto; gap: 14px; padding: 16px 18px; border-left: 0; border-top: 1px solid var(--line); }
+  /* The panel takes the height its content needs, the board the rest; no 100dvh, which on the iPhone
+     home screen is taller than the space the page gets and cut the panel off below. */
+  html { background: var(--panel); }
+  .board-area { flex: 1 1 0; min-height: 0; padding: 6px; }
+  #board { height: 100%; max-height: none; }
+  .side { flex: none; width: auto; gap: 14px; padding: 16px 18px; border-left: 0; border-top: 1px solid var(--line); }
   .rank { flex-direction: row; align-items: baseline; gap: 10px; }
   .rank-value { font-size: 26px; }
   .verdict { font-size: 24px; }
   /* After the game everything fits on the screen: the verdict and the margin in one line, a tighter
      count, the board a little smaller; the players, handicap and rules line wait for the next game. */
-  #app.over #board { max-height: calc(100dvh - 330px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
   #app.over .players, #app.over .handicap, #app.over .rules { display: none; }
   #app.over .side { gap: 12px; padding-top: 12px; padding-bottom: 12px; }
   .result { gap: 8px; }

@@ -8,10 +8,16 @@ import { fillInputs, profileMeta, spatialFeatures, globalFeatures, metaFeatures 
 import { replay, isLegal } from './rules.mjs';
 
 const ortDir = 'ort-1.31.1/';
-const ortModule = `${ortDir}ort.webgpu.min.mjs`;
+const ortModule = `${ortDir}ort.wasm.min.mjs`;
 /** The net, cut in parts: GitHub keeps files under 100 MB. */
 const modelParts = ['model/human-9.onnx.0', 'model/human-9.onnx.1'];
 const modelCache = 'nine-model-v1';
+/** Set while the net loads: if the page dies on the way, the next start does not load it again on its own. */
+const loadingFlag = 'nine-engine-loading';
+const flag = {
+  get() { try { return localStorage.getItem(loadingFlag) === '1'; } catch { return false; } },
+  set(on) { try { if (on) localStorage.setItem(loadingFlag, '1'); else localStorage.removeItem(loadingFlag); } catch { /* fine */ } },
+};
 const columns = 'ABCDEFGHJKLMNOPQRST';
 
 /** The net's input and output for symmetry `s` (0..7), as KataGo turns the board: transpose, then flips. */
@@ -41,26 +47,27 @@ async function modelBytes(onProgress) {
     }
     responses.push(response);
   }
-  const total = responses.reduce((sum, response) => sum + Number(response.headers.get('Content-Length') || 0), 0);
-  const chunks = [];
+  const sizes = responses.map((response) => Number(response.headers.get('Content-Length') || 0));
+  const total = sizes.every(Boolean) ? sizes.reduce((sum, size) => sum + size, 0) : 0;
+  // One buffer of the full size when the sizes are known: a phone has little memory to spare for copies.
+  let bytes = new Uint8Array(total);
   let loaded = 0;
   for (const response of responses) {
     const reader = response.body.getReader();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      chunks.push(value);
+      if (loaded + value.length > bytes.length) {
+        const grown = new Uint8Array(Math.max(loaded + value.length, bytes.length * 2));
+        grown.set(bytes.subarray(0, loaded));
+        bytes = grown;
+      }
+      bytes.set(value, loaded);
       loaded += value.length;
       onProgress?.(loaded, total);
     }
   }
-  const bytes = new Uint8Array(loaded);
-  let at = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, at);
-    at += chunk.length;
-  }
-  return bytes;
+  return loaded === bytes.length ? bytes : bytes.slice(0, loaded);
 }
 
 export function createBrowserEngine() {
@@ -71,16 +78,22 @@ export function createBrowserEngine() {
 
   async function load() {
     loading ??= (async () => {
+      flag.set(true);
       ort = await import(`./${ortModule}`);
       ort.env.wasm.wasmPaths = new URL(ortDir, import.meta.url).href;
       // GitHub Pages cannot turn on cross-origin isolation, so WebAssembly runs on one thread.
       ort.env.wasm.numThreads = 1;
       const bytes = await modelBytes((loaded, total) => progressHandler({ loaded, total }));
       progressHandler({ loaded: 1, total: 1, preparing: true });
-      const providers = 'gpu' in navigator ? ['webgpu', 'wasm'] : ['wasm'];
-      session = await ort.InferenceSession.create(bytes, { executionProviders: providers, graphOptimizationLevel: 'all' });
+      // WebAssembly only: WebGPU took about twice the memory on this net, and Safari on the iPhone closed the page.
+      // No memory arena and plain graph optimization: the same speed here, a faster start.
+      session = await ort.InferenceSession.create(bytes, {
+        executionProviders: ['wasm'], graphOptimizationLevel: 'basic', enableCpuMemArena: false, enableMemPattern: false,
+      });
+      flag.set(false);
       progressHandler(null);
     })().catch((error) => {
+      flag.set(false);
       loading = null;
       progressHandler(null);
       throw error;
@@ -120,8 +133,8 @@ export function createBrowserEngine() {
 
   return {
     onProgress(handler) { progressHandler = handler; },
-    /** Starts the download before the first move needs it. */
-    warmUp() { return load(); },
+    /** Starts the download before the first move needs it, unless the last load killed the page. */
+    warmUp() { return flag.get() ? Promise.resolve() : load(); },
     /** The subset of KataGo's analysis JSON that nine sends. */
     async query(fields) {
       const size = fields.boardXSize;

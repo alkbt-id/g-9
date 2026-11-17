@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>G · NINE — проверка бота</title>
+  <meta name="nine-version" content="2026-11-17 19:38">
+  <style>
+    body { margin: 0; padding: 20px 16px; background: #111316; color: #eceef0; font: 15px/1.45 -apple-system, sans-serif; }
+    button { font: inherit; padding: 12px 18px; border-radius: 8px; border: 0; background: #ddb56c; color: #1b1408; font-weight: 600; }
+    pre { white-space: pre-wrap; font: 13px/1.4 ui-monospace, Menlo, monospace; color: #aeb4bc; }
+  </style>
+</head>
+<body>
+  <p>Проверка: шаг за шагом загружает бота и записывает, до какого шага дошла. Если страница упадёт, открой её
+    снова — запись покажет, где.</p>
+  <p><button id="run" type="button">Проверить</button></p>
+  <pre id="log"></pre>
+  <script type="module">
+    // Each step is written down before it starts, so a crash leaves the last step in the record.
+    const key = 'nine-diag';
+    const logEl = document.getElementById('log');
+    const read = () => { try { return JSON.parse(localStorage.getItem(key) ?? '[]'); } catch { return []; } };
+    const show = () => { logEl.textContent = read().join('\n'); };
+    const write = (line) => { const lines = read(); lines.push(line); localStorage.setItem(key, JSON.stringify(lines)); show(); };
+    show();
+    document.querySelector('p').append(` Версия: ${document.querySelector('meta[name="nine-version"]')?.content ?? '—'}.`);
+    const previous = read();
+    if (previous.length && !previous.at(-1).startsWith('ГОТОВО')) logEl.textContent = 'Прошлая проверка оборвалась на последней строке:\n\n' + previous.join('\n');
+
+    document.getElementById('run').addEventListener('click', async () => {
+      localStorage.setItem(key, '[]');
+      const t0 = performance.now();
+      const at = () => `${((performance.now() - t0) / 1000).toFixed(1)} с`;
+      const step = async (name, work) => {
+        write(`→ ${name}…`);
+        const result = await work();
+        write(`  ок, ${at()}${result ? ` · ${result}` : ''}`);
+      };
+      try {
+        write(navigator.userAgent);
+        let ort, bytes, session;
+        await step('программа onnxruntime', async () => {
+          ort = await import('./ort-1.31.1/ort.wasm.min.mjs');
+          ort.env.wasm.wasmPaths = new URL('ort-1.31.1/', location.href).href;
+          ort.env.wasm.numThreads = 1;
+        });
+        await step('сеть из памяти телефона', async () => {
+          const cache = await caches.open('nine-model-v1');
+          const responses = [];
+          let fromCache = 0;
+          for (const part of ['model/human-9.onnx.0', 'model/human-9.onnx.1']) {
+            let response = await cache.match(part);
+            if (response) fromCache++;
+            else response = await fetch(part);
+            responses.push(response);
+          }
+          // One buffer of the full size, as the game does.
+          bytes = new Uint8Array(responses.reduce((sum, r) => sum + Number(r.headers.get('Content-Length')), 0));
+          let loaded = 0;
+          for (const response of responses) {
+            const reader = response.body.getReader();
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              bytes.set(value, loaded);
+              loaded += value.length;
+            }
+          }
+          return `${Math.round(loaded / 1e6)} МБ, из кэша ${fromCache} из 2`;
+        });
+        await step('сеть в onnxruntime', async () => {
+          session = await ort.InferenceSession.create(bytes, {
+            executionProviders: ['wasm'], graphOptimizationLevel: 'basic', enableCpuMemArena: false, enableMemPattern: false,
+          });
+          bytes = null;
+        });
+        await step('первый ход сети', async () => {
+          const spatial = new Float32Array(22 * 81);
+          spatial.fill(1, 0, 81);
+          const feeds = {
+            spatial: new ort.Tensor('float32', spatial, [1, 22, 9, 9]),
+            global: new ort.Tensor('float32', new Float32Array(19), [1, 19]),
+            meta: new ort.Tensor('float32', new Float32Array(192), [1, 192]),
+          };
+          const times = [];
+          for (let i = 0; i < 3; i++) {
+            const t = performance.now();
+            await session.run(feeds);
+            times.push(Math.round(performance.now() - t));
+          }
+          return `ходы за ${times.join(', ')} мс`;
+        });
+        write('ГОТОВО');
+      } catch (error) {
+        write(`ОШИБКА: ${error.message}`);
+      }
+    });
+  </script>
+</body>
+</html>

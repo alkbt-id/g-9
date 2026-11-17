@@ -11,7 +11,8 @@ self.addEventListener('fetch', (event) => {
       if (hit) return hit;
     }
     try {
-      const response = await fetch(event.request);
+      // GitHub Pages lets browsers keep files for 10 minutes; asking again gets an update at once.
+      const response = await fetch(event.request, { cache: 'no-cache' });
       if (response.ok) await cache.put(event.request, response.clone());
       return response;
     } catch (error) {

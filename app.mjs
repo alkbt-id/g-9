@@ -6,6 +6,8 @@ import { createBackend } from './backend.mjs';
 import { playStone, wakeSound } from './sound.mjs';
 
 const historyLimit = 5000;
+/** The build of the page-only version, to tell whether the phone runs the latest. */
+const version = document.querySelector('meta[name="nine-version"]')?.content ?? '';
 const botPause = 400;
 
 const backend = createBackend();
@@ -393,7 +395,7 @@ function sidePanel(shown) {
   }
   if (download && !busy) side.append(Object.assign(el('p', 'muted', downloadText()), { id: 'download' }));
   if (note) side.append(el('p', 'note', note));
-  side.append(el('p', 'rules muted', `9 × 9 · японские правила · коми ${numberText(game?.komi ?? evenKomi)}`));
+  side.append(el('p', 'rules muted', `9 × 9 · японские правила · коми ${numberText(game?.komi ?? evenKomi)}${version ? ` · версия ${version}` : ''}`));
   return side;
 }
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>G · NINE — проверка бота</title>
-  <meta name="nine-version" content="2026-11-17 19:40">
+  <meta name="nine-version" content="2026-11-17 19:46">
   <style>
     body { margin: 0; padding: 20px 16px; background: #111316; color: #eceef0; font: 15px/1.45 -apple-system, sans-serif; }
     button { font: inherit; padding: 12px 18px; border-radius: 8px; border: 0; background: #ddb56c; color: #1b1408; font-weight: 600; }
@@ -46,8 +46,8 @@
           ort.env.wasm.numThreads = 1;
         });
         await step('сеть из памяти телефона', async () => {
-          const cache = await caches.open('nine-model-v1');
-          const { parts, size } = await (await fetch('model/human-9.json', { cache: 'no-cache' })).json();
+          const cache = await caches.open('nine-model-v2');
+          const { parts, size } = await (await fetch('model/human-9-half.json', { cache: 'no-cache' })).json();
           const responses = [];
           let fromCache = 0;
           for (const { path: part } of parts) {
@@ -68,11 +68,11 @@
               loaded += value.length;
             }
           }
-          return `${Math.round(loaded / 1e6)} МБ, из кэша ${fromCache} из 2`;
+          return `${Math.round(loaded / 1e6)} МБ, из кэша ${fromCache} из ${parts.length}`;
         });
         await step('сеть в onnxruntime', async () => {
           session = await ort.InferenceSession.create(bytes, {
-            executionProviders: ['wasm'], graphOptimizationLevel: 'basic', enableCpuMemArena: false, enableMemPattern: false,
+            executionProviders: ['wasm'], graphOptimizationLevel: 'disabled', enableCpuMemArena: false, enableMemPattern: false,
           });
           bytes = null;
         });

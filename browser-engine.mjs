@@ -9,9 +9,14 @@ import { replay, isLegal } from './rules.mjs';
 
 const ortDir = 'ort-1.31.1/';
 const ortModule = `${ortDir}ort.wasm.min.mjs`;
-/** The net, cut in parts (GitHub keeps files under 100 MB), with their exact sizes. */
-const modelIndex = 'model/human-9.json';
-const modelCache = 'nine-model-v1';
+/**
+ * The net with its weights stored as float16 and turned back into float32 inside the graph: half the download
+ * and a third of the memory, the arithmetic still float32. Policies differ from KataGo's by at most 0.001.
+ * The index lists its parts (GitHub keeps files under 100 MB) with their exact sizes.
+ */
+const modelIndex = 'model/human-9-half.json';
+const modelCache = 'nine-model-v2';
+const oldCaches = ['nine-model-v1'];
 /** Set while the net loads: if the page dies on the way, the next start does not load it again on its own. */
 const loadingFlag = 'nine-engine-loading';
 const flag = {
@@ -33,7 +38,10 @@ function symmetric(point, size, s) {
 /** The model's bytes: from the cache after the first time, otherwise downloaded with progress. */
 async function modelBytes(onProgress) {
   let cache = null;
-  try { cache = await caches.open(modelCache); } catch { /* no Cache API: download each time */ }
+  try {
+    for (const old of oldCaches) await caches.delete(old);
+    cache = await caches.open(modelCache);
+  } catch { /* no Cache API: download each time */ }
   let index = await cache?.match(modelIndex);
   if (!index) {
     index = await fetch(modelIndex, { cache: 'no-cache' });
@@ -89,9 +97,10 @@ export function createBrowserEngine() {
       const bytes = await modelBytes((loaded, total) => progressHandler({ loaded, total }));
       progressHandler({ loaded: 1, total: 1, preparing: true });
       // WebAssembly only: WebGPU took about twice the memory on this net, and Safari on the iPhone closed the page.
-      // No memory arena and plain graph optimization: the same speed here, a faster start.
+      // No graph optimization: it would fold the float16 weights back into float32 copies and triple the memory
+      // (130 MB against 350 MB in Chrome); the speed is the same. No memory arena either.
       session = await ort.InferenceSession.create(bytes, {
-        executionProviders: ['wasm'], graphOptimizationLevel: 'basic', enableCpuMemArena: false, enableMemPattern: false,
+        executionProviders: ['wasm'], graphOptimizationLevel: 'disabled', enableCpuMemArena: false, enableMemPattern: false,
       });
       flag.set(false);
       progressHandler(null);

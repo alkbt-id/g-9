@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>G · NINE — проверка бота</title>
-  <meta name="nine-version" content="2026-11-17 19:38">
+  <meta name="nine-version" content="2026-11-17 19:40">
   <style>
     body { margin: 0; padding: 20px 16px; background: #111316; color: #eceef0; font: 15px/1.45 -apple-system, sans-serif; }
     button { font: inherit; padding: 12px 18px; border-radius: 8px; border: 0; background: #ddb56c; color: #1b1408; font-weight: 600; }
@@ -47,16 +47,17 @@
         });
         await step('сеть из памяти телефона', async () => {
           const cache = await caches.open('nine-model-v1');
+          const { parts, size } = await (await fetch('model/human-9.json', { cache: 'no-cache' })).json();
           const responses = [];
           let fromCache = 0;
-          for (const part of ['model/human-9.onnx.0', 'model/human-9.onnx.1']) {
+          for (const { path: part } of parts) {
             let response = await cache.match(part);
             if (response) fromCache++;
             else response = await fetch(part);
             responses.push(response);
           }
           // One buffer of the full size, as the game does.
-          bytes = new Uint8Array(responses.reduce((sum, r) => sum + Number(r.headers.get('Content-Length')), 0));
+          bytes = new Uint8Array(size);
           let loaded = 0;
           for (const response of responses) {
             const reader = response.body.getReader();

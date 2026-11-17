@@ -9,8 +9,8 @@ import { replay, isLegal } from './rules.mjs';
 
 const ortDir = 'ort-1.31.1/';
 const ortModule = `${ortDir}ort.wasm.min.mjs`;
-/** The net, cut in parts: GitHub keeps files under 100 MB. */
-const modelParts = ['model/human-9.onnx.0', 'model/human-9.onnx.1'];
+/** The net, cut in parts (GitHub keeps files under 100 MB), with their exact sizes. */
+const modelIndex = 'model/human-9.json';
 const modelCache = 'nine-model-v1';
 /** Set while the net loads: if the page dies on the way, the next start does not load it again on its own. */
 const loadingFlag = 'nine-engine-loading';
@@ -34,40 +34,43 @@ function symmetric(point, size, s) {
 async function modelBytes(onProgress) {
   let cache = null;
   try { cache = await caches.open(modelCache); } catch { /* no Cache API: download each time */ }
+  let index = await cache?.match(modelIndex);
+  if (!index) {
+    index = await fetch(modelIndex, { cache: 'no-cache' });
+    if (!index.ok) throw new Error(`модель бота не скачалась (${index.status})`);
+    await cache?.put(modelIndex, index.clone());
+  }
+  const { parts, size } = await index.json();
   const responses = [];
-  for (const part of modelParts) {
+  for (const { path: part } of parts) {
     let response = await cache?.match(part);
     if (!response) {
       response = await fetch(part);
       if (!response.ok) throw new Error(`модель бота не скачалась (${response.status})`);
       if (cache) {
-        await cache.put(part, response.clone());
+        // Straight into the cache and read back from there: a clone would hold the whole part in memory.
+        await cache.put(part, response);
         response = await cache.match(part);
       }
     }
     responses.push(response);
   }
-  const sizes = responses.map((response) => Number(response.headers.get('Content-Length') || 0));
-  const total = sizes.every(Boolean) ? sizes.reduce((sum, size) => sum + size, 0) : 0;
-  // One buffer of the full size when the sizes are known: a phone has little memory to spare for copies.
-  let bytes = new Uint8Array(total);
+  // One buffer of the exact size and no other copy: a phone has little memory to spare.
+  const bytes = new Uint8Array(size);
   let loaded = 0;
   for (const response of responses) {
     const reader = response.body.getReader();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      if (loaded + value.length > bytes.length) {
-        const grown = new Uint8Array(Math.max(loaded + value.length, bytes.length * 2));
-        grown.set(bytes.subarray(0, loaded));
-        bytes = grown;
-      }
+      if (loaded + value.length > size) throw new Error('модель бота повреждена: больше, чем должна быть');
       bytes.set(value, loaded);
       loaded += value.length;
-      onProgress?.(loaded, total);
+      onProgress?.(loaded, size);
     }
   }
-  return loaded === bytes.length ? bytes : bytes.slice(0, loaded);
+  if (loaded !== size) throw new Error('модель бота повреждена: меньше, чем должна быть');
+  return bytes;
 }
 
 export function createBrowserEngine() {

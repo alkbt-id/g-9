@@ -3,7 +3,7 @@ import { play, replay, startPosition, isLegal } from './rules.mjs';
 import { boardSize, botFloorKyu, botFor, chooseBotMove, evenKomi, finalOwnership, gtpOf, handicapFor, handicapStones, nextKyu, rankText, strongestKyu, weakestKyu } from './bot.mjs';
 import { countGame } from './score.mjs';
 import { createBackend } from './backend.mjs';
-import { playStone, wakeSound } from './sound.mjs';
+import { listenForSound, playStone } from './sound.mjs';
 
 const historyLimit = 5000;
 /** The build of the page-only version, to tell whether the phone runs the latest. */
@@ -449,7 +449,7 @@ async function start() {
     const fresh = await backend.refresh().catch(() => null);
     if (fresh) adopt(fresh);
   });
-  document.addEventListener('pointerdown', wakeSound);
+  listenForSound();
   // Progress changes only its own line: a full redraw would break a stone being dragged.
   backend.onEngineProgress?.((progress) => {
     const started = !download !== !progress;

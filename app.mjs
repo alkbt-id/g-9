@@ -3,7 +3,7 @@ import { play, replay, startPosition, isLegal } from './rules.mjs';
 import { boardSize, botFloorKyu, botFor, chooseBotMove, evenKomi, finalOwnership, gtpOf, handicapFor, handicapStones, nextKyu, rankText, strongestKyu, weakestKyu } from './bot.mjs';
 import { countGame } from './score.mjs';
 import { createBackend } from './backend.mjs';
-import { listenForSound, playStone } from './sound.mjs';
+import { listenForSound, playStone, setSoundOn, soundOn } from './sound.mjs';
 
 const historyLimit = 5000;
 /** The build of the page-only version, to tell whether the phone runs the latest. */
@@ -395,8 +395,14 @@ function sidePanel(shown) {
   }
   if (download && !busy) side.append(Object.assign(el('p', 'muted', downloadText()), { id: 'download' }));
   if (note) side.append(el('p', 'note', note));
-  side.append(el('p', 'rules muted', `9 × 9 · японские правила · коми ${numberText(game?.komi ?? evenKomi)}${version ? ` · версия ${version}` : ''}`));
+  const rules = el('p', 'rules muted', `9 × 9 · японские правила · коми ${numberText(game?.komi ?? evenKomi)}${version ? ` · версия ${version}` : ''}`);
+  rules.append(' · ', button(soundOn() ? 'выключить звук' : 'включить звук', 'link', toggleSound));
+  side.append(rules);
   return side;
+}
+function toggleSound() {
+  setSoundOn(!soundOn());
+  render();
 }
 
 function render() {

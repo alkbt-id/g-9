@@ -64,6 +64,25 @@ button:focus-visible { outline: 2px solid var(--wood); outline-offset: 2px; }
 .rules { margin-top: auto; font-size: 12px; }
 .link { background: none; border: 0; padding: 0; font-size: 12px; color: var(--wood); text-decoration: underline; text-underline-offset: 2px; }
 
+.games-link { align-self: flex-start; margin-top: 4px; font-size: 13px; }
+
+/* The played games: a screen of its own instead of the board. */
+#app.games-screen { overflow-y: auto; }
+.games { width: 100%; max-width: 720px; margin: 0 auto; padding: 28px 24px 40px; display: flex; flex-direction: column; gap: 14px; }
+.games-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.games-head h1 { margin: 0; font-size: 28px; line-height: 1.1; }
+.games-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.small-note { font-size: 13px; }
+.game-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.game-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.game-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.game-head { display: flex; gap: 10px; align-items: baseline; font-weight: 600; }
+.game-verdict.won { color: var(--won); }
+.game-verdict.lost { color: var(--lost); }
+.game-details { font-size: 13px; }
+.game-actions { flex: none; display: flex; gap: 6px; }
+.outline.small { min-height: 36px; padding: 0 12px; font-size: 14px; }
+
 /* A phone upright: the board across the whole width, the panel under it. */
 @media (max-width: 720px) {
   #app { flex-direction: column; }
@@ -75,6 +94,10 @@ button:focus-visible { outline: 2px solid var(--wood); outline-offset: 2px; }
   .side { flex: none; width: auto; gap: 14px; padding: 16px 18px; border-left: 0; border-top: 1px solid var(--line); }
   .rank { flex-direction: row; align-items: baseline; gap: 10px; }
   .rank-value { font-size: 26px; }
+  .games-link { align-self: auto; margin: 0 0 0 auto; }
+  .games { padding: 16px 16px 32px; }
+  .game-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .game-actions button { flex: 1; }
   .verdict { font-size: 24px; }
   /* After the game everything fits on the screen: the verdict and the margin in one line, a tighter
      count, the board a little smaller; the players, handicap and rules line wait for the next game. */

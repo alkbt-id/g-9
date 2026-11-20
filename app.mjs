@@ -4,6 +4,7 @@ import { boardSize, botFloorKyu, botFor, chooseBotMove, evenKomi, finalOwnership
 import { countGame } from './score.mjs';
 import { createBackend } from './backend.mjs';
 import { listenForSound, playStone, setSoundOn, soundOn } from './sound.mjs';
+import { gameFileName, gameSgf, saveFile, zipFiles } from './games.mjs';
 
 const historyLimit = 5000;
 /** The build of the page-only version, to tell whether the phone runs the latest. */
@@ -26,6 +27,10 @@ let ghost = null;
 /** The bot's net downloading in the page-only build: `{ loaded, total }`, or null. */
 let download = null;
 let resignAsked = false;
+/** 'game' — the board; 'games' — the list of played games. */
+let screen = 'game';
+/** The game whose «Удалить» was pressed once (its date), or 'all'; the second press deletes. */
+let deleteAsked = '';
 
 function validState(value) {
   if (!value || typeof value !== 'object' || value.version !== 1) return null;
@@ -369,7 +374,8 @@ function sidePanel(shown) {
   const { game } = state;
   const side = el('aside', 'side');
   const rank = el('div', 'rank');
-  rank.append(el('span', 'rank-label', 'Твой ранг'), el('span', 'rank-value', rankText(state.kyu)));
+  rank.append(el('span', 'rank-label', 'Твой ранг'), el('span', 'rank-value', rankText(state.kyu)),
+    button(`Партии · ${state.history.length}`, 'link games-link', openGames));
   side.append(rank);
   if (!game) {
     side.append(el('p', 'muted', `Партия 9 × 9 с ботом твоего ранга. Победа поднимает ранг на ступень, поражение опускает. Слабее ${rankText(botFloorKyu)} бот играет как ${rankText(botFloorKyu)} и даёт фору.`),
@@ -405,7 +411,99 @@ function toggleSound() {
   render();
 }
 
+/* The played games: a list to save as SGF files or delete. */
+const filePrefix = 'g9';
+const appName = 'G Nine';
+const monthDate = { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+function plural(count, one, few, many) {
+  const tens = count % 100;
+  const ones = count % 10;
+  if (tens >= 11 && tens <= 14) return many;
+  return ones === 1 ? one : ones >= 2 && ones <= 4 ? few : many;
+}
+const sgfOf = (entry) => gameSgf(entry, { size: boardSize, stones: handicapStones(entry.handicap).map((point) => gtpOf(point)), botKyu: Math.min(entry.kyu, botFloorKyu), app: appName });
+function saveGame(entry) {
+  saveFile(gameFileName(entry, filePrefix), sgfOf(entry), 'application/x-go-sgf');
+}
+function saveAllGames() {
+  const files = state.history.map((entry) => ({ name: gameFileName(entry, filePrefix), text: sgfOf(entry), date: new Date(entry.date) }));
+  const today = new Date();
+  const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  saveFile(`${filePrefix}-games-${day}.zip`, zipFiles(files), 'application/zip');
+}
+function deleteGames(key) {
+  if (deleteAsked !== key) {
+    deleteAsked = key;
+    render();
+    return;
+  }
+  deleteAsked = '';
+  state.history = key === 'all' ? [] : state.history.filter((entry) => entry.date !== key);
+  save();
+  render();
+}
+function openGames() {
+  screen = 'games';
+  deleteAsked = '';
+  render();
+}
+function closeGames() {
+  screen = 'game';
+  deleteAsked = '';
+  render();
+}
+function gameRow(entry) {
+  const won = entry.winner === entry.color;
+  const row = el('li', 'game-row');
+  const text = el('div', 'game-text');
+  const head = el('p', 'game-head');
+  head.append(el('span', `game-verdict ${won ? 'won' : 'lost'}`, won ? 'Победа' : 'Поражение'),
+    el('span', '', entry.how === 'resign' ? 'ты сдался' : entry.margin === 0 ? 'ничья' : `${sideName[entry.winner]} +${numberText(entry.margin)}`));
+  const moves = entry.moves ? entry.moves.split(' ').filter((move) => move !== 'pass').length : 0;
+  const handicap = handicapText({ stones: handicapStones(entry.handicap), komi: entry.komi });
+  const details = [
+    new Date(entry.date).toLocaleString('ru-RU', monthDate),
+    `ты ${entry.color === 1 ? 'чёрными' : 'белыми'}`,
+    rankText(entry.kyu),
+    `${moves} ${plural(moves, 'ход', 'хода', 'ходов')}`,
+  ];
+  if (handicap) details.push(handicap.toLowerCase());
+  text.append(head, el('p', 'game-details muted', details.join(' · ')));
+  const asked = deleteAsked === entry.date;
+  const actions = el('div', 'game-actions');
+  actions.append(button('SGF', 'outline small', () => saveGame(entry)),
+    button(asked ? 'Точно удалить?' : 'Удалить', asked ? 'outline small danger' : 'outline small', () => deleteGames(entry.date)));
+  row.append(text, actions);
+  return row;
+}
+function gamesView() {
+  const view = el('section', 'games');
+  const head = el('div', 'games-head');
+  const count = state.history.length;
+  head.append(el('h1', '', 'Партии'), button('К игре', 'outline', closeGames));
+  view.append(head);
+  if (!count) {
+    view.append(el('p', 'muted', 'Сыгранных партий пока нет.'));
+    return view;
+  }
+  const allAsked = deleteAsked === 'all';
+  const actions = el('div', 'games-actions');
+  actions.append(button(`Сохранить все (${count})`, 'primary', saveAllGames),
+    button(allAsked ? 'Точно удалить все?' : 'Удалить все', allAsked ? 'outline danger' : 'outline', () => deleteGames('all')));
+  view.append(actions, el('p', 'muted small-note', 'Файлы SGF открывает любая программа для го. Ранг от удаления не меняется.'));
+  const list = el('ol', 'game-list');
+  for (const entry of [...state.history].reverse()) list.append(gameRow(entry));
+  view.append(list);
+  return view;
+}
+
 function render() {
+  root.classList.toggle('games-screen', screen === 'games');
+  if (screen === 'games') {
+    root.classList.remove('over');
+    root.replaceChildren(gamesView());
+    return;
+  }
   const shown = state.game ? gamePosition() : startPosition(boardSize);
   root.classList.toggle('over', state.game?.status === 'over');
   root.replaceChildren(boardView(shown), sidePanel(shown));
@@ -421,6 +519,7 @@ function adopt(fresh) {
   note = '';
   ghost = null;
   resignAsked = false;
+  deleteAsked = '';
   render();
   continueGame();
 }

@@ -154,6 +154,22 @@ async function finishGame(how) {
   save();
   render();
 }
+/** Moves are black's and white's in turn from the first; with handicap stones white moves first. */
+const moverOf = (game, index) => ((index + (game.stones.length ? 1 : 0)) % 2 ? 2 : 1);
+/** Where an undo cuts the game: before your last move, so it takes back the bot's answer too; -1 when you have not moved. */
+const undoCut = (game) => game.moves.findLastIndex((_, index) => moverOf(game, index) === game.color);
+/** Takes back your last move and the bot's answer; again and again, back to the start of the game. */
+function undo() {
+  if (!yourTurn()) return;
+  const cut = undoCut(state.game);
+  if (cut < 0) return;
+  state.game.moves.length = cut;
+  note = '';
+  ghost = null;
+  resignAsked = false;
+  save();
+  render();
+}
 function resign() {
   if (!yourTurn()) return;
   if (!resignAsked) {
@@ -392,7 +408,8 @@ function sidePanel(shown) {
     } else {
       const actions = el('div', 'actions');
       const open = yourTurn();
-      actions.append(button('Пас', 'outline', () => userMove(null), !open),
+      actions.append(button('Ход назад', 'outline', undo, !open || undoCut(game) < 0),
+        button('Пас', 'outline', () => userMove(null), !open),
         button(resignAsked ? 'Точно сдаться?' : 'Сдаться', resignAsked ? 'outline danger' : 'outline', resign, !open));
       const status = el('p', 'status', statusText(shown));
       if (busy && download) status.id = 'download';
